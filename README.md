@@ -1,129 +1,32 @@
-# Tmux Resurrect
+# tmux-resurrect (Per-Pane ZSH History)
 
-[![Build Status](https://travis-ci.org/tmux-plugins/tmux-resurrect.svg?branch=master)](https://travis-ci.org/tmux-plugins/tmux-resurrect)
+This fork specifically addresses individualized zshell histories (`HISTFILE`) for every single pane. 
 
-Restore `tmux` environment after system restart.
+In vanilla `tmux-resurrect`, windows and panes are restored *before* their names are applied. This creates a race condition where shells read default window names (like `zsh`) on startup, causing multiple panes to incorrectly dump their history into the same file. 
 
-Tmux is great, except when you have to restart the computer. You lose all the
-running programs, working directories, pane layouts etc.
-There are helpful management tools out there, but they require initial
-configuration and continuous updates as your workflow evolves or you start new
-projects.
+This fork modifies the restoration pipeline to extract and apply the exact window name and `automatic-rename` parameters *at the time of pane creation*.
 
-`tmux-resurrect` saves all the little details from your tmux environment so it
-can be completely restored after a system restart (or when you feel like it).
-No configuration is required. You should feel like you never quit tmux.
+## Installation
 
-It even (optionally)
-[restores vim and neovim sessions](docs/restoring_vim_and_neovim_sessions.md)!
+Via [TPM](https://github.com/tmux-plugins/tpm) (Tmux Plugin Manager), update your `.tmux.conf` to point to this fork:
 
-Automatic restoring and continuous saving of tmux env is also possible with
-[tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) plugin.
+```tmux
+# HISTFILEs directory creation
+if-shell "[ ! -d ~/.zsh_history.d ]" \
+	"run-shell 'mkdir ~/.zsh_history.d/'"
 
-### Screencast
+set -g @plugin 'b-sct/tmux-resurrect'
+set -g default-command 'HISTFILE="$HOME/.zsh_history.d/$(tmux display-message -p "#S_#W_#P" | sed "s/[^a-zA-Z0-9_-]/_/g")" exec zsh'
+```
 
-[![screencast screenshot](/video/screencast_img.png)](https://vimeo.com/104763018)
+## TODO
 
-### Key bindings
+*   **Window Naming vs. Window Index Drift:** 
+    Since the `HISTFILE` path relies on `#W` (Window Name), remember that `zsh` only evaluates the `default-command` (or `.zshrc` logic) once upon pane creation. If a window is later renamed (either manually or via `automatic-rename`), the pane will continue writing to the history file named after the *original* window name. 
+    *   *Workaround:* If you want completely immutable history files regardless of naming changes, swap `#W` for `#I` (Window Index) in your configuration strings (e.g., `#S_#I_#P`).
 
-- `prefix + Ctrl-s` - save
-- `prefix + Ctrl-r` - restore
+*   **Pane Index Shifting Conflicts:** 
+    Tmux pane indices (`#P`) are dynamically numbered. If you close a pane in the middle of a layout (for example, deleting pane 2 in a window with 4 panes), the remaining panes shift their indices down (panes 3 and 4 instantly become 2 and 3 respectively). 
+    *   *The Problem:* Because the `HISTFILE` environment variable is statically set when the shell boots, those shifted panes will continue writing to `..._3` and `..._4`. If you then split the window again, the *new* pane will be assigned index 4, causing it to read and write to the same `HISTFILE` as the still-running shifted pane. 
+    *   *Future Implementation:* Investigate a more robust tracking method for `HISTFILE` allocation, as relying purely on Tmux's sequential `#P` index is fragile during active layout manipulations.
 
-### About
-
-This plugin goes to great lengths to save and restore all the details from your
-`tmux` environment. Here's what's been taken care of:
-
-- all sessions, windows, panes and their order
-- current working directory for each pane
-- **exact pane layouts** within windows (even when zoomed)
-- active and alternative session
-- active and alternative window for each session
-- windows with focus
-- active pane for each window
-- "grouped sessions" (useful feature when using tmux with multiple monitors)
-- programs running within a pane! More details in the
-  [restoring programs doc](docs/restoring_programs.md).
-
-Optional:
-
-- [restoring vim and neovim sessions](docs/restoring_vim_and_neovim_sessions.md)
-- [restoring pane contents](docs/restoring_pane_contents.md)
-- [restoring a previously saved environment](docs/restoring_previously_saved_environment.md)
-
-Requirements / dependencies: `tmux 1.9` or higher, `bash`.
-
-Tested and working on Linux, OSX and Cygwin.
-
-`tmux-resurrect` is idempotent! It will not try to restore panes or windows that
-already exist.<br/>
-The single exception to this is when tmux is started with only 1 pane in order
-to restore previous tmux env. Only in this case will this single pane be
-overwritten.
-
-### Installation with [Tmux Plugin Manager](https://github.com/tmux-plugins/tpm) (recommended)
-
-Add plugin to the list of TPM plugins in `.tmux.conf`:
-
-    set -g @plugin 'tmux-plugins/tmux-resurrect'
-
-Hit `prefix + I` to fetch the plugin and source it. You should now be able to
-use the plugin.
-
-### Manual Installation
-
-Clone the repo:
-
-    $ git clone https://github.com/tmux-plugins/tmux-resurrect ~/clone/path
-
-Add this line to the bottom of `.tmux.conf`:
-
-    run-shell ~/clone/path/resurrect.tmux
-
-Reload TMUX environment with: `$ tmux source-file ~/.tmux.conf`.
-You should now be able to use the plugin.
-
-### Docs
-
-- [Guide for migrating from tmuxinator](docs/migrating_from_tmuxinator.md)
-
-**Configuration**
-
-- [Changing the default key bindings](docs/custom_key_bindings.md).
-- [Setting up hooks on save & restore](docs/hooks.md).
-- Only a conservative list of programs is restored by default:<br/>
-  `vi vim nvim emacs man less more tail top htop irssi weechat mutt`.<br/>
-  [Restoring programs doc](docs/restoring_programs.md) explains how to restore
-  additional programs.
-- [Change a directory](docs/save_dir.md) where `tmux-resurrect` saves tmux
-  environment.
-
-**Optional features**
-
-- [Restoring vim and neovim sessions](docs/restoring_vim_and_neovim_sessions.md)
-  is nice if you're a vim/neovim user.
-- [Restoring pane contents](docs/restoring_pane_contents.md) feature.
-
-### Other goodies
-
-- [tmux-copycat](https://github.com/tmux-plugins/tmux-copycat) - a plugin for
-  regex searches in tmux and fast match selection
-- [tmux-yank](https://github.com/tmux-plugins/tmux-yank) - enables copying
-  highlighted text to system clipboard
-- [tmux-open](https://github.com/tmux-plugins/tmux-open) - a plugin for quickly
-  opening highlighted file or a url
-- [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) - automatic
-  restoring and continuous saving of tmux env
-
-### Reporting bugs and contributing
-
-Both contributing and bug reports are welcome. Please check out
-[contributing guidelines](CONTRIBUTING.md).
-
-### Credits
-
-[Mislav Marohnić](https://github.com/mislav) - the idea for the plugin came from his
-[tmux-session script](https://github.com/mislav/dotfiles/blob/2036b5e03fb430bbcbc340689d63328abaa28876/bin/tmux-session).
-
-### License
-[MIT](LICENSE.md)

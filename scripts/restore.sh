@@ -123,18 +123,33 @@ pane_creation_command() {
 	echo "cat '$(pane_contents_file "restore" "${1}:${2}.${3}")'; exec $(tmux_default_command)"
 }
 
+
+saved_window_name() {
+	local session_name="$1"
+	local window_number="$2"
+	awk -F'\t' -v s="$session_name" -v w="$window_number" '
+		$1 == "window" && $2 == s && $3 == w {
+			name = $4
+			sub(/^:/, "", name)   # window_name is stored with a leading ":" in the resurrect file
+			print name
+			exit
+		}
+	' "$(last_resurrect_file)"
+}
+
 new_window() {
 	local session_name="$1"
 	local window_number="$2"
 	local dir="$3"
 	local pane_index="$4"
 	local pane_id="${session_name}:${window_number}.${pane_index}"
+	local window_name="$(saved_window_name "$session_name" "$window_number")"
 	dir="${dir/#\~/$HOME}"
 	if is_restoring_pane_contents && pane_contents_file_exists "$pane_id"; then
 		local pane_creation_command="$(pane_creation_command "$session_name" "$window_number" "$pane_index")"
-		tmux new-window -d -t "${session_name}:${window_number}" -c "$dir" "$pane_creation_command"
+		tmux new-window -d -n "$window_name" -t "${session_name}:${window_number}" -c "$dir" "$pane_creation_command"
 	else
-		tmux new-window -d -t "${session_name}:${window_number}" -c "$dir"
+		tmux new-window -d -n "$window_name" -t "${session_name}:${window_number}" -c "$dir"
 	fi
 }
 
@@ -144,11 +159,12 @@ new_session() {
 	local dir="$3"
 	local pane_index="$4"
 	local pane_id="${session_name}:${window_number}.${pane_index}"
+	local window_name="$(saved_window_name "$session_name" "$window_number")"
 	if is_restoring_pane_contents && pane_contents_file_exists "$pane_id"; then
 		local pane_creation_command="$(pane_creation_command "$session_name" "$window_number" "$pane_index")"
-		TMUX="" tmux -S "$(tmux_socket)" new-session -d -s "$session_name" -c "$dir" "$pane_creation_command"
+		TMUX="" tmux -S "$(tmux_socket)" new-session -d -s "$session_name" -n "$window_name" -c "$dir" "$pane_creation_command"
 	else
-		TMUX="" tmux -S "$(tmux_socket)" new-session -d -s "$session_name" -c "$dir"
+		TMUX="" tmux -S "$(tmux_socket)" new-session -d -s "$session_name" -n "$window_name" -c "$dir"
 	fi
 	# change first window number if necessary
 	local created_window_num="$(first_window_num)"
