@@ -15,7 +15,7 @@ Via [TPM](https://github.com/tmux-plugins/tpm) (Tmux Plugin Manager), update you
 if-shell "[ ! -d ~/.zsh_history.d ]" \
 	"run-shell 'mkdir ~/.zsh_history.d/'"
 
-set -g @plugin 'b-sct/tmux-resurrect'
+set -g @plugin 'b-sct/tmux-resurrect-zsh-per-pane-hist'
 set -g default-command 'HISTFILE="$HOME/.zsh_history.d/$(tmux display-message -p "#S_#W_#P" | sed "s/[^a-zA-Z0-9_-]/_/g")" exec zsh'
 ```
 
